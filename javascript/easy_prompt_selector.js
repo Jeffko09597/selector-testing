@@ -1,4 +1,4 @@
-// === EasyPromptSelector.js (Full Integration with All Features) ===
+// === EasyPromptSelector.js (Full Integration with All Features, Simplified Undo UI, Styling Fixes) ===
 
 class EPSElementBuilder {
   static baseButton(text, { size = 'lg', color = 'primary' }) {
@@ -17,12 +17,12 @@ class EPSElementBuilder {
     fields.style.flexWrap = 'wrap'
     fields.style.minWidth = 'min(320px, 100%)'
     fields.style.maxWidth = '100%'
-    fields.style.flex = '1 calc(50% - 20px)'
-    fields.style.borderWidth = '1px'
-    fields.style.borderColor = 'var(--block-border-color,#374151)'
-    fields.style.borderRadius = 'var(--block-radius,8px)'
-    fields.style.padding = '8px'
-    fields.style.height = 'fit-content'
+    fields.style.flex = '1 1 auto'
+    fields.style.border = '1px solid var(--block-border-color,#374151)'
+    fields.style.borderRadius = '6px'
+    fields.style.padding = '4px'
+    fields.style.margin = '2px 0'
+    fields.style.backgroundColor = 'var(--block-background-fill)'
     return fields
   }
 
@@ -52,20 +52,6 @@ class EPSElementBuilder {
     button.classList.add('easy_prompt_selector_redo_button')
     button.addEventListener('click', onClick)
     return button
-  }
-
-  static undoSelect(options, { onChange }) {
-    const select = document.createElement('select')
-    select.classList.add('gr-box', 'gr-input')
-    select.style.marginLeft = '10px'
-    options.forEach((entry, index) => {
-      const opt = document.createElement('option')
-      opt.value = index
-      opt.textContent = `${entry.value}`
-      select.appendChild(opt)
-    })
-    select.addEventListener('change', (e) => onChange(parseInt(e.target.value)))
-    return select
   }
 
   static dropDown(id, options, { onChange }) {
@@ -144,23 +130,27 @@ class EasyPromptSelector {
     row.style.display = 'flex'
     row.style.alignItems = 'center'
     row.style.gap = '10px'
+    row.style.flexWrap = 'wrap'
 
     const dropDown = this.renderDropdown()
     dropDown.style.flex = '1'
     row.appendChild(dropDown)
 
     const settings = document.createElement('div')
-    settings.style.flex = '2'
+    settings.style.display = 'flex'
+    settings.style.flexWrap = 'wrap'
+    settings.style.gap = '10px'
     const undoButton = EPSElementBuilder.undoButton({ onClick: () => this.undoLastTag() })
     const redoButton = EPSElementBuilder.redoButton({ onClick: () => this.redoLastTag() })
-    const undoSelect = EPSElementBuilder.undoSelect(this.history, (index) => this.undoTo(index))
     settings.appendChild(undoButton)
     settings.appendChild(redoButton)
-    settings.appendChild(undoSelect)
     row.appendChild(settings)
 
     const container = document.createElement('div')
     container.id = this.AREA_ID
+    container.style.position = 'relative'
+    container.style.zIndex = '5'
+    container.style.marginBottom = '10px'
     container.appendChild(row)
     container.appendChild(this.renderContent())
     return container
@@ -212,7 +202,16 @@ class EasyPromptSelector {
   }
 
   renderTagButton(title, value, color = 'primary') {
-    const button = EPSElementBuilder.baseButton(title, { color, size: 'sm' })
+    const button = document.createElement('button')
+    button.textContent = title
+    button.style.height = '1.6rem'
+    button.style.margin = '2px'
+    button.style.fontSize = '0.85rem'
+    button.style.padding = '2px 6px'
+    button.style.backgroundColor = '#223344'
+    button.style.color = '#eee'
+    button.style.border = '1px solid #445566'
+    button.style.borderRadius = '6px'
     button.addEventListener('click', (e) => {
       e.preventDefault()
       const isNegative = value.startsWith('neg-')
@@ -241,12 +240,6 @@ class EasyPromptSelector {
     textarea.value = textarea.value.replace(new RegExp(`(?:^|,\s*)${last.value}`), '')
     textarea.dispatchEvent(new Event('input'))
     this.redoStack.push(last)
-  }
-
-  undoTo(index) {
-    while (this.history.length > index + 1) {
-      this.undoLastTag()
-    }
   }
 
   redoLastTag() {
