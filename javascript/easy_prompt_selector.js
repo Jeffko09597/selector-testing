@@ -1,4 +1,4 @@
-// === EasyPromptSelector.js (Full Integration) ===
+// === EasyPromptSelector.js (Full Integration with All Features) ===
 
 class EPSElementBuilder {
   static baseButton(text, { size = 'lg', color = 'primary' }) {
@@ -92,10 +92,6 @@ class EPSElementBuilder {
     return select
   }
 }
-
-window.EPSElementBuilder = EPSElementBuilder;
-
-// === Full EasyPromptSelector Integration Below ===
 
 class EasyPromptSelector {
   constructor(yaml, gradioApp) {
@@ -216,7 +212,8 @@ class EasyPromptSelector {
   }
 
   renderTagButton(title, value, color = 'primary') {
-    return EPSElementBuilder.baseButton(title, { color, size: 'sm' }).addEventListener('click', (e) => {
+    const button = EPSElementBuilder.baseButton(title, { color, size: 'sm' })
+    button.addEventListener('click', (e) => {
       e.preventDefault()
       const isNegative = value.startsWith('neg-')
       const val = isNegative ? value.slice(4) : value
@@ -234,6 +231,7 @@ class EasyPromptSelector {
       }
       textarea.dispatchEvent(new Event('input'))
     })
+    return button
   }
 
   undoLastTag() {
@@ -264,6 +262,7 @@ class EasyPromptSelector {
   }
 
   changeVisibility(node, visible) {
+    if (!node) return
     node.style.display = visible ? 'flex' : 'none'
   }
 }
@@ -273,7 +272,7 @@ onUiLoaded(async () => {
   const eps = new EasyPromptSelector(yaml, gradioApp())
   const button = EPSElementBuilder.openButton({
     onClick: () => {
-      const tagArea = gradioApp().querySelector(`#${eps.AREA_ID}`)
+      const tagArea = gradioApp().getElementById(eps.AREA_ID)
       eps.changeVisibility(tagArea, eps.visible = !eps.visible)
     }
   })
