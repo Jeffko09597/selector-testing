@@ -1,3 +1,5 @@
+// === EasyPromptSelector.js (Full Integration) ===
+
 class EPSElementBuilder {
   static baseButton(text, { size = 'lg', color = 'primary' }) {
     const button = gradioApp().getElementById('txt2img_generate').cloneNode()
@@ -40,12 +42,14 @@ class EPSElementBuilder {
 
   static undoButton({ onClick }) {
     const button = EPSElementBuilder.baseButton('↩ Undo', { size: 'lg', color: 'secondary' })
+    button.classList.add('easy_prompt_selector_undo_button')
     button.addEventListener('click', onClick)
     return button
   }
 
   static redoButton({ onClick }) {
     const button = EPSElementBuilder.baseButton('↪ Redo', { size: 'lg', color: 'secondary' })
+    button.classList.add('easy_prompt_selector_redo_button')
     button.addEventListener('click', onClick)
     return button
   }
@@ -63,21 +67,48 @@ class EPSElementBuilder {
     select.addEventListener('change', (e) => onChange(parseInt(e.target.value)))
     return select
   }
+
+  static dropDown(id, options, { onChange }) {
+    const select = document.createElement('select')
+    select.id = id
+    select.classList.add('gr-box', 'gr-input')
+    select.style.color = 'var(--body-text-color)'
+    select.style.backgroundColor = 'var(--input-background-fill)'
+    select.style.borderColor = 'var(--block-border-color)'
+    select.style.borderRadius = 'var(--block-radius)'
+    select.style.margin = '2px'
+    select.addEventListener('change', (event) => {
+      onChange(event.target.value)
+    })
+
+    const none = ['Nothing'].concat(options)
+    none.forEach((key) => {
+      const option = document.createElement('option')
+      option.value = key
+      option.textContent = key
+      select.appendChild(option)
+    })
+
+    return select
+  }
 }
 
-class EasyPromptSelector {
-  PATH_FILE = 'tmp/easyPromptSelector.txt'
-  AREA_ID = 'easy-prompt-selector'
-  SELECT_ID = 'easy-prompt-selector-select'
-  CONTENT_ID = 'easy-prompt-selector-content'
-  history = []
-  redoStack = []
+window.EPSElementBuilder = EPSElementBuilder;
 
+// === Full EasyPromptSelector Integration Below ===
+
+class EasyPromptSelector {
   constructor(yaml, gradioApp) {
     this.yaml = yaml
     this.gradioApp = gradioApp
     this.visible = false
-    this.tags = undefined
+    this.tags = {}
+    this.history = []
+    this.redoStack = []
+    this.PATH_FILE = 'tmp/easyPromptSelector.txt'
+    this.AREA_ID = 'easy-prompt-selector'
+    this.SELECT_ID = 'easy-prompt-selector-select'
+    this.CONTENT_ID = 'easy-prompt-selector-content'
   }
 
   async init() {
@@ -132,7 +163,8 @@ class EasyPromptSelector {
     settings.appendChild(undoSelect)
     row.appendChild(settings)
 
-    const container = EPSElementBuilder.areaContainer(this.AREA_ID)
+    const container = document.createElement('div')
+    container.id = this.AREA_ID
     container.appendChild(row)
     container.appendChild(this.renderContent())
     return container
@@ -184,36 +216,23 @@ class EasyPromptSelector {
   }
 
   renderTagButton(title, value, color = 'primary') {
-    return EPSElementBuilder.tagButton({
-      title,
-      onClick: (e) => {
-        e.preventDefault()
-        const isNegative = value.startsWith('neg-')
-        const val = isNegative ? value.slice(4) : value
-        const id = isNegative ? 'txt2img_neg_prompt' : 'txt2img_prompt'
-        const textarea = gradioApp().getElementById(id).querySelector('textarea')
-        if (textarea.value.includes(val)) {
-          textarea.value = textarea.value.replace(new RegExp(`(?:^|,\s*)${val}`), '')
-        } else {
-          if (textarea.value.trim() !== '' && !textarea.value.trim().endsWith(',')) {
-            textarea.value += ', '
-          }
-          textarea.value += val
-          this.history.push({ id, value: val })
-          this.redoStack = []
-        }
-        textarea.dispatchEvent(new Event('input'))
-      },
-      onRightClick: (e) => {
-        e.preventDefault()
-        const isNegative = value.startsWith('neg-')
-        const val = isNegative ? value.slice(4) : value
-        const id = isNegative ? 'txt2img_neg_prompt' : 'txt2img_prompt'
-        const textarea = gradioApp().getElementById(id).querySelector('textarea')
+    return EPSElementBuilder.baseButton(title, { color, size: 'sm' }).addEventListener('click', (e) => {
+      e.preventDefault()
+      const isNegative = value.startsWith('neg-')
+      const val = isNegative ? value.slice(4) : value
+      const id = isNegative ? 'txt2img_neg_prompt' : 'txt2img_prompt'
+      const textarea = gradioApp().getElementById(id).querySelector('textarea')
+      if (textarea.value.includes(val)) {
         textarea.value = textarea.value.replace(new RegExp(`(?:^|,\s*)${val}`), '')
-        textarea.dispatchEvent(new Event('input'))
-      },
-      color
+      } else {
+        if (textarea.value.trim() !== '' && !textarea.value.trim().endsWith(',')) {
+          textarea.value += ', '
+        }
+        textarea.value += val
+        this.history.push({ id, value: val })
+        this.redoStack = []
+      }
+      textarea.dispatchEvent(new Event('input'))
     })
   }
 
@@ -258,9 +277,7 @@ onUiLoaded(async () => {
       eps.changeVisibility(tagArea, eps.visible = !eps.visible)
     }
   })
-  const reloadButton = EPSElementBuilder.reloadButton({
-    onClick: async () => await eps.init()
-  })
+  const reloadButton = EPSElementBuilder.reloadButton({ onClick: async () => await eps.init() })
   const actionColumn = gradioApp().getElementById('txt2img_actions_column')
   const container = document.createElement('div')
   container.classList.add('easy_prompt_selector_container')
