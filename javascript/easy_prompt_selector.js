@@ -53,7 +53,7 @@ class EPSElementBuilder {
   }
 
   static areaContainer(id = undefined) {
-    const container = gradioApp().getElementById('txt2img_results').cloneNode()
+    const container = document.createElement('div')
     container.id = id
     container.style.gap = 0
     container.style.display = 'none'
@@ -123,11 +123,14 @@ class EasyPromptSelector {
 
   async init() {
     this.tags = await this.parseFiles()
-    const tagArea = gradioApp().querySelector(`#${this.AREA_ID}`)
-    if (tagArea) {
-      this.visible = false
-      this.changeVisibility(tagArea, this.visible)
-      tagArea.remove()
+    const existingArea = gradioApp().querySelector(`#${this.AREA_ID}`)
+    if (existingArea) {
+      const dropdown = this.renderDropdown()
+      const content = this.renderContent()
+      const row = existingArea.firstChild
+      row.replaceChild(dropdown, row.firstChild)
+      existingArea.replaceChild(content, existingArea.lastChild)
+      return
     }
     gradioApp().getElementById('txt2img_toprow').after(this.render())
   }
