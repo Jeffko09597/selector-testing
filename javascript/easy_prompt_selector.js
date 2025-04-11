@@ -141,3 +141,127 @@ class EasyPromptSelector {
     row.style.gap = '10px'
 
     const dropDown = this.renderDropdown()
+    dropDown.style.flex = '1'
+    row.appendChild(dropDown)
+
+    const settings = document.createElement('div')
+    const checkbox = EPSElementBuilder.checkbox('负面', {
+      onChange: (checked) => { this.toNegative = checked }
+    })
+    settings.style.flex = '1'
+    settings.appendChild(checkbox)
+    row.appendChild(settings)
+
+    const container = EPSElementBuilder.areaContainer(this.AREA_ID)
+    container.appendChild(row)
+    container.appendChild(this.renderContent())
+    return container
+  }
+
+  renderDropdown() {
+    return EPSElementBuilder.dropDown(this.SELECT_ID, Object.keys(this.tags), {
+      onChange: (selected) => {
+        const content = gradioApp().getElementById(this.CONTENT_ID)
+        Array.from(content.childNodes).forEach((node) => {
+          this.changeVisibility(node, node.id === `easy-prompt-selector-container-${selected}`)
+        })
+      }
+    })
+  }
+
+  renderContent() {
+    const content = document.createElement('div')
+    content.id = this.CONTENT_ID
+    Object.keys(this.tags).forEach((key) => {
+      const values = this.tags[key]
+      const fields = EPSElementBuilder.tagFields()
+      fields.id = `easy-prompt-selector-container-${key}`
+      fields.style.display = 'none'
+      fields.style.marginTop = '10px'
+      this.renderTagButtons(values, key).forEach((group) => fields.appendChild(group))
+      content.appendChild(fields)
+    })
+    return content
+  }
+
+  renderTagButtons(tags, prefix = '') {
+    if (Array.isArray(tags)) {
+      return tags.map((tag) => this.renderTagButton(tag, tag))
+    } else {
+      return Object.keys(tags).map((key) => {
+        const values = tags[key]
+        const randomKey = `${prefix}:${key}`
+        if (typeof values === 'string') return this.renderTagButton(key, values)
+        const fields = EPSElementBuilder.tagFields()
+        fields.style.flexDirection = 'column'
+        fields.append(this.renderTagButton(key, `@${randomKey}@`))
+        const buttons = EPSElementBuilder.tagFields()
+        buttons.id = 'buttons'
+        this.renderTagButtons(values, randomKey).forEach((button) => buttons.appendChild(button))
+        fields.append(buttons)
+        return fields
+      })
+    }
+  }
+
+  renderTagButton(title, value, color = 'primary') {
+    return EPSElementBuilder.tagButton({
+      title,
+      onClick: (e) => {
+        e.preventDefault()
+        const isNegative = this.toNegative || e.metaKey || e.ctrlKey
+        const id = isNegative ? 'txt2img_neg_prompt' : 'txt2img_prompt'
+        const textarea = gradioApp().getElementById(id).querySelector('textarea')
+        if (textarea.value.indexOf(", " + value) >= 0) {
+          textarea.value = textarea.value.replace(", " + value, '')
+        } else if (textarea.value.indexOf(value) === 0) {
+          textarea.value = textarea.value.replace(value, '')
+        } else {
+          if (textarea.value.trim() !== '' && textarea.value.trim().slice(-1) !== ',') {
+            textarea.value += ', '
+          }
+          textarea.value += value
+        }
+        textarea.dispatchEvent(new Event("input"))
+      },
+      onRightClick: (e) => {
+        e.preventDefault()
+        const isNegative = this.toNegative || e.metaKey || e.ctrlKey
+        const id = isNegative ? 'txt2img_neg_prompt' : 'txt2img_prompt'
+        const textarea = gradioApp().getElementById(id).querySelector('textarea')
+        if (textarea.value.startsWith(value)) {
+          textarea.value = textarea.value.replace(new RegExp(`${value},*`), '').trimStart()
+        } else {
+          textarea.value = textarea.value.replace(`, ${value}`, '')
+        }
+        textarea.dispatchEvent(new Event("input"))
+      },
+      color
+    })
+  }
+
+  changeVisibility(node, visible) {
+    node.style.display = visible ? 'flex' : 'none'
+  }
+}
+
+onUiLoaded(async () => {
+  yaml = window.jsyaml
+  const eps = new EasyPromptSelector(yaml, gradioApp())
+  const button = EPSElementBuilder.openButton({
+    onClick: () => {
+      const tagArea = gradioApp().querySelector(`#${eps.AREA_ID}`)
+      eps.changeVisibility(tagArea, eps.visible = !eps.visible)
+    }
+  })
+  const reloadButton = EPSElementBuilder.reloadButton({
+    onClick: async () => await eps.init()
+  })
+  const actionColumn = gradioApp().getElementById('txt2img_actions_column')
+  const container = document.createElement('div')
+  container.classList.add('easy_prompt_selector_container')
+  container.appendChild(button)
+  container.appendChild(reloadButton)
+  actionColumn.appendChild(container)
+  await eps.init()
+})
