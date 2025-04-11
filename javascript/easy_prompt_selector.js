@@ -38,6 +38,20 @@ class EPSElementBuilder {
     return button
   }
 
+  static undoButton({ onClick }) {
+    const button = EPSElementBuilder.baseButton('↩ Undo Last', { size: 'sm', color: 'secondary' })
+    button.classList.add('easy_prompt_selector_undo_button')
+    button.addEventListener('click', onClick)
+    return button
+  }
+
+  static redoButton({ onClick }) {
+    const button = EPSElementBuilder.baseButton('↪ Redo', { size: 'sm', color: 'secondary' })
+    button.classList.add('easy_prompt_selector_redo_button')
+    button.addEventListener('click', onClick)
+    return button
+  }
+
   static areaContainer(id = undefined) {
     const container = gradioApp().getElementById('txt2img_results').cloneNode()
     container.id = id
@@ -96,6 +110,8 @@ class EasyPromptSelector {
   AREA_ID = 'easy-prompt-selector'
   SELECT_ID = 'easy-prompt-selector-select'
   CONTENT_ID = 'easy-prompt-selector-content'
+  history = []
+  redoStack = []
 
   constructor(yaml, gradioApp) {
     this.yaml = yaml
@@ -145,11 +161,15 @@ class EasyPromptSelector {
     row.appendChild(dropDown)
 
     const settings = document.createElement('div')
+    settings.style.flex = '1'
     const checkbox = EPSElementBuilder.checkbox('负面', {
       onChange: (checked) => { this.toNegative = checked }
     })
-    settings.style.flex = '1'
+    const undoButton = EPSElementBuilder.undoButton({ onClick: () => this.undoLastTag() })
+    const redoButton = EPSElementBuilder.redoButton({ onClick: () => this.redoLastTag() })
     settings.appendChild(checkbox)
+    settings.appendChild(undoButton)
+    settings.appendChild(redoButton)
     row.appendChild(settings)
 
     const container = EPSElementBuilder.areaContainer(this.AREA_ID)
@@ -212,32 +232,49 @@ class EasyPromptSelector {
         const isNegative = this.toNegative || e.metaKey || e.ctrlKey
         const id = isNegative ? 'txt2img_neg_prompt' : 'txt2img_prompt'
         const textarea = gradioApp().getElementById(id).querySelector('textarea')
-        if (textarea.value.indexOf(", " + value) >= 0) {
-          textarea.value = textarea.value.replace(", " + value, '')
-        } else if (textarea.value.indexOf(value) === 0) {
-          textarea.value = textarea.value.replace(value, '')
+        if (textarea.value.includes(value)) {
+          textarea.value = textarea.value.replace(new RegExp(`(?:^|,\s*)${value}`), '')
         } else {
-          if (textarea.value.trim() !== '' && textarea.value.trim().slice(-1) !== ',') {
+          if (textarea.value.trim() !== '' && !textarea.value.trim().endsWith(',')) {
             textarea.value += ', '
           }
           textarea.value += value
+          this.history.push({ id, value })
+          this.redoStack = []
         }
-        textarea.dispatchEvent(new Event("input"))
+        textarea.dispatchEvent(new Event('input'))
       },
       onRightClick: (e) => {
         e.preventDefault()
         const isNegative = this.toNegative || e.metaKey || e.ctrlKey
         const id = isNegative ? 'txt2img_neg_prompt' : 'txt2img_prompt'
         const textarea = gradioApp().getElementById(id).querySelector('textarea')
-        if (textarea.value.startsWith(value)) {
-          textarea.value = textarea.value.replace(new RegExp(`${value},*`), '').trimStart()
-        } else {
-          textarea.value = textarea.value.replace(`, ${value}`, '')
-        }
-        textarea.dispatchEvent(new Event("input"))
+        textarea.value = textarea.value.replace(new RegExp(`(?:^|,\s*)${value}`), '')
+        textarea.dispatchEvent(new Event('input'))
       },
       color
     })
+  }
+
+  undoLastTag() {
+    if (this.history.length === 0) return
+    const last = this.history.pop()
+    const textarea = gradioApp().getElementById(last.id).querySelector('textarea')
+    textarea.value = textarea.value.replace(new RegExp(`(?:^|,\s*)${last.value}`), '')
+    textarea.dispatchEvent(new Event('input'))
+    this.redoStack.push(last)
+  }
+
+  redoLastTag() {
+    if (this.redoStack.length === 0) return
+    const redo = this.redoStack.pop()
+    const textarea = gradioApp().getElementById(redo.id).querySelector('textarea')
+    if (textarea.value.trim() !== '' && !textarea.value.trim().endsWith(',')) {
+      textarea.value += ', '
+    }
+    textarea.value += redo.value
+    textarea.dispatchEvent(new Event('input'))
+    this.history.push(redo)
   }
 
   changeVisibility(node, visible) {
