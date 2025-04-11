@@ -1,4 +1,4 @@
-// === EasyPromptSelector.js (Full Integration with All Features, Simplified Undo UI, Styling Fixes) ===
+// === EasyPromptSelector.js (Stable Layout Version) ===
 
 class EPSElementBuilder {
   static baseButton(text, { size = 'lg', color = 'primary' }) {
@@ -27,29 +27,41 @@ class EPSElementBuilder {
   }
 
   static openButton({ onClick }) {
-    const button = EPSElementBuilder.baseButton('🔯提示词', { size: 'sm', color: 'secondary' })
-    button.classList.add('easy_prompt_selector_button')
+    const button = EPSElementBuilder.baseButton('🔯提示詞', { size: 'sm', color: 'secondary' })
     button.addEventListener('click', onClick)
     return button
   }
 
   static reloadButton({ onClick }) {
     const button = EPSElementBuilder.baseButton('🔄 Reload', { size: 'sm', color: 'secondary' })
-    button.classList.add('easy_prompt_selector_reload_button')
     button.addEventListener('click', onClick)
     return button
   }
 
   static undoButton({ onClick }) {
     const button = EPSElementBuilder.baseButton('↩ Undo', { size: 'lg', color: 'secondary' })
-    button.classList.add('easy_prompt_selector_undo_button')
+    button.style.minWidth = '80px'
     button.addEventListener('click', onClick)
     return button
   }
 
   static redoButton({ onClick }) {
     const button = EPSElementBuilder.baseButton('↪ Redo', { size: 'lg', color: 'secondary' })
-    button.classList.add('easy_prompt_selector_redo_button')
+    button.style.minWidth = '80px'
+    button.addEventListener('click', onClick)
+    return button
+  }
+
+  static restoreButton({ onClick }) {
+    const button = EPSElementBuilder.baseButton('🔙 Last Prompt', { size: 'lg', color: 'secondary' })
+    button.style.minWidth = '100px'
+    button.addEventListener('click', onClick)
+    return button
+  }
+
+  static clearButton({ onClick }) {
+    const button = EPSElementBuilder.baseButton('🧹 Clear Prompt', { size: 'lg', color: 'secondary' })
+    button.style.minWidth = '100px'
     button.addEventListener('click', onClick)
     return button
   }
@@ -63,9 +75,10 @@ class EPSElementBuilder {
     select.style.borderColor = 'var(--block-border-color)'
     select.style.borderRadius = 'var(--block-radius)'
     select.style.margin = '2px'
-    select.addEventListener('change', (event) => {
-      onChange(event.target.value)
-    })
+    select.style.minWidth = '120px'
+    select.style.maxWidth = '180px'
+    select.style.flex = '0 0 auto'
+    select.addEventListener('change', (event) => onChange(event.target.value))
 
     const none = ['Nothing'].concat(options)
     none.forEach((key) => {
@@ -74,7 +87,6 @@ class EPSElementBuilder {
       option.textContent = key
       select.appendChild(option)
     })
-
     return select
   }
 }
@@ -87,6 +99,7 @@ class EasyPromptSelector {
     this.tags = {}
     this.history = []
     this.redoStack = []
+    this.lastPrompt = ''
     this.PATH_FILE = 'tmp/easyPromptSelector.txt'
     this.AREA_ID = 'easy-prompt-selector'
     this.SELECT_ID = 'easy-prompt-selector-select'
@@ -96,15 +109,10 @@ class EasyPromptSelector {
   async init() {
     this.tags = await this.parseFiles()
     const existingArea = gradioApp().querySelector(`#${this.AREA_ID}`)
-    if (existingArea) {
-      const dropdown = this.renderDropdown()
-      const content = this.renderContent()
-      const row = existingArea.firstChild
-      row.replaceChild(dropdown, row.firstChild)
-      existingArea.replaceChild(content, existingArea.lastChild)
-      return
-    }
-    gradioApp().getElementById('txt2img_toprow').after(this.render())
+    if (existingArea) existingArea.remove()
+    const topRow = gradioApp().getElementById('txt2img_toprow')
+    const area = this.render()
+    topRow.parentNode.insertBefore(area, topRow.nextSibling)
   }
 
   async readFile(filepath) {
@@ -126,60 +134,53 @@ class EasyPromptSelector {
   }
 
   render() {
-    const row = document.createElement('div')
-    row.style.display = 'flex'
-    row.style.alignItems = 'center'
-    row.style.gap = '10px'
-    row.style.flexWrap = 'wrap'
-
-    const dropDown = this.renderDropdown()
-    dropDown.style.flex = '1'
-    row.appendChild(dropDown)
-
-    const settings = document.createElement('div')
-    settings.style.display = 'flex'
-    settings.style.flexWrap = 'wrap'
-    settings.style.gap = '10px'
-    const undoButton = EPSElementBuilder.undoButton({ onClick: () => this.undoLastTag() })
-    const redoButton = EPSElementBuilder.redoButton({ onClick: () => this.redoLastTag() })
-    settings.appendChild(undoButton)
-    settings.appendChild(redoButton)
-    row.appendChild(settings)
+    const area = document.createElement('div')
+    area.id = this.AREA_ID
 
     const container = document.createElement('div')
-    container.id = this.AREA_ID
-    container.style.position = 'relative'
-    container.style.zIndex = '5'
-    container.style.marginBottom = '10px'
-    container.appendChild(row)
-    container.appendChild(this.renderContent())
-    return container
-  }
+    container.style.display = 'flex'
+    container.style.flexDirection = 'column'
+    container.style.gap = '10px'
+    container.style.width = '100%'
 
-  renderDropdown() {
-    return EPSElementBuilder.dropDown(this.SELECT_ID, Object.keys(this.tags), {
+    const controlRow = document.createElement('div')
+    controlRow.style.display = 'flex'
+    controlRow.style.alignItems = 'center'
+    controlRow.style.flexWrap = 'wrap'
+    controlRow.style.justifyContent = 'center'
+    controlRow.style.gap = '6px'
+    controlRow.style.width = '100%'
+
+    controlRow.appendChild(EPSElementBuilder.dropDown(this.SELECT_ID, Object.keys(this.tags), {
       onChange: (selected) => {
         const content = gradioApp().getElementById(this.CONTENT_ID)
         Array.from(content.childNodes).forEach((node) => {
           this.changeVisibility(node, node.id === `easy-prompt-selector-container-${selected}`)
         })
       }
-    })
-  }
+    }))
+    controlRow.appendChild(EPSElementBuilder.undoButton({ onClick: () => this.undoLastTag() }))
+    controlRow.appendChild(EPSElementBuilder.redoButton({ onClick: () => this.redoLastTag() }))
+    controlRow.appendChild(EPSElementBuilder.restoreButton({ onClick: () => this.restoreLastPrompt() }))
+    controlRow.appendChild(EPSElementBuilder.clearButton({ onClick: () => this.clearPrompt() }))
 
-  renderContent() {
-    const content = document.createElement('div')
-    content.id = this.CONTENT_ID
+    const contentWrap = document.createElement('div')
+    contentWrap.id = this.CONTENT_ID
+    contentWrap.style.marginTop = '0px'
+
     Object.keys(this.tags).forEach((key) => {
       const values = this.tags[key]
       const fields = EPSElementBuilder.tagFields()
       fields.id = `easy-prompt-selector-container-${key}`
       fields.style.display = 'none'
-      fields.style.marginTop = '10px'
       this.renderTagButtons(values, key).forEach((group) => fields.appendChild(group))
-      content.appendChild(fields)
+      contentWrap.appendChild(fields)
     })
-    return content
+
+    container.appendChild(controlRow)
+    container.appendChild(contentWrap)
+    area.appendChild(container)
+    return area
   }
 
   renderTagButtons(tags, prefix = '') {
@@ -201,7 +202,7 @@ class EasyPromptSelector {
     }
   }
 
-  renderTagButton(title, value, color = 'primary') {
+  renderTagButton(title, value) {
     const button = document.createElement('button')
     button.textContent = title
     button.style.height = '1.6rem'
@@ -218,15 +219,21 @@ class EasyPromptSelector {
       const val = isNegative ? value.slice(4) : value
       const id = isNegative ? 'txt2img_neg_prompt' : 'txt2img_prompt'
       const textarea = gradioApp().getElementById(id).querySelector('textarea')
-      if (textarea.value.includes(val)) {
-        textarea.value = textarea.value.replace(new RegExp(`(?:^|,\s*)${val}`), '')
+      const tags = val.split(',').map(t => t.trim()).filter(Boolean)
+      const current = textarea.value
+      const allIncluded = tags.every(t => current.includes(t))
+      if (allIncluded) {
+        tags.forEach(t => {
+          textarea.value = textarea.value.replace(new RegExp(`(?:^|,\s*)${t}`), '')
+        })
       } else {
         if (textarea.value.trim() !== '' && !textarea.value.trim().endsWith(',')) {
           textarea.value += ', '
         }
-        textarea.value += val
+        textarea.value += tags.join(', ')
         this.history.push({ id, value: val })
         this.redoStack = []
+        this.lastPrompt = gradioApp().getElementById('txt2img_prompt').querySelector('textarea').value
       }
       textarea.dispatchEvent(new Event('input'))
     })
@@ -237,7 +244,9 @@ class EasyPromptSelector {
     if (this.history.length === 0) return
     const last = this.history.pop()
     const textarea = gradioApp().getElementById(last.id).querySelector('textarea')
-    textarea.value = textarea.value.replace(new RegExp(`(?:^|,\s*)${last.value}`), '')
+    last.value.split(',').map(t => t.trim()).forEach(t => {
+      textarea.value = textarea.value.replace(new RegExp(`(?:^|,\s*)${t}`), '')
+    })
     textarea.dispatchEvent(new Event('input'))
     this.redoStack.push(last)
   }
@@ -254,6 +263,18 @@ class EasyPromptSelector {
     this.history.push(redo)
   }
 
+  restoreLastPrompt() {
+    const textarea = gradioApp().getElementById('txt2img_prompt').querySelector('textarea')
+    textarea.value = this.lastPrompt
+    textarea.dispatchEvent(new Event('input'))
+  }
+
+  clearPrompt() {
+    const textarea = gradioApp().getElementById('txt2img_prompt').querySelector('textarea')
+    textarea.value = ''
+    textarea.dispatchEvent(new Event('input'))
+  }
+
   changeVisibility(node, visible) {
     if (!node) return
     node.style.display = visible ? 'flex' : 'none'
@@ -261,20 +282,21 @@ class EasyPromptSelector {
 }
 
 onUiLoaded(async () => {
-  yaml = window.jsyaml
+  const yaml = window.jsyaml
   const eps = new EasyPromptSelector(yaml, gradioApp())
-  const button = EPSElementBuilder.openButton({
-    onClick: () => {
-      const tagArea = gradioApp().getElementById(eps.AREA_ID)
-      eps.changeVisibility(tagArea, eps.visible = !eps.visible)
-    }
-  })
-  const reloadButton = EPSElementBuilder.reloadButton({ onClick: async () => await eps.init() })
-  const actionColumn = gradioApp().getElementById('txt2img_actions_column')
-  const container = document.createElement('div')
-  container.classList.add('easy_prompt_selector_container')
-  container.appendChild(button)
-  container.appendChild(reloadButton)
-  actionColumn.appendChild(container)
+
+  const controls = document.createElement('div')
+  controls.style.display = 'flex'
+  controls.style.gap = '6px'
+  controls.style.margin = '6px 0'
+
+  controls.appendChild(EPSElementBuilder.openButton({ onClick: () => {
+    const tagArea = gradioApp().getElementById(eps.AREA_ID)
+    eps.changeVisibility(tagArea, eps.visible = !eps.visible)
+  }}))
+
+  controls.appendChild(EPSElementBuilder.reloadButton({ onClick: async () => await eps.init() }))
+
+  gradioApp().getElementById('txt2img_actions_column').appendChild(controls)
   await eps.init()
 })
