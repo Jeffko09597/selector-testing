@@ -108,6 +108,7 @@ class EasyPromptSelector {
     this.tags = {};
     this.history = [];
     this.redoStack = [];
+    // lastPromptSnapshot 只更新於 save all 按鈕點擊時
     this.lastPromptSnapshot = { pos: '', neg: '' };
     this.PATH_FILE = 'tmp/easyPromptSelector.txt';
     this.AREA_ID = 'easy-prompt-selector';
@@ -147,14 +148,14 @@ class EasyPromptSelector {
     node.style.display = visible ? 'block' : 'none';
   }
 
-  // saveSnapshot 只保存目前輸入，僅在用戶明確點擊 save all 時儲存
+  // saveSnapshot: 只在使用者點擊「save all」時呼叫
   saveSnapshot() {
     const pos = getPromptTextarea('txt2img', false)?.value || '';
     const neg = getPromptTextarea('txt2img', true)?.value || '';
     this.lastPromptSnapshot = { pos, neg };
   }
 
-  // insertTagPrompt: 若 tag 存在則移除（並取消高亮），否則插入並加上高亮
+  // insertTagPrompt: tag操作本身不更新 lastPromptSnapshot
   insertTagPrompt(value, button) {
     const isNeg = value.startsWith('neg-');
     const tagEscaped = value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -174,17 +175,16 @@ class EasyPromptSelector {
       textarea.value += value;
       if (button) button.classList.add('eps-selected');
     }
-    this.saveSnapshot();
+    // 不呼叫 saveSnapshot() 自動更新快照
     this.history.push({ type: isNeg ? 'neg' : 'pos', value: value, button: button });
     this.redoStack = [];
     textarea.dispatchEvent(new Event('input'));
   }
 
-  // insertRandomPrompt: 用於分類標籤，邏輯同上
+  // insertRandomPrompt: 用於分類標籤，不自動更新 lastPromptSnapshot
   insertRandomPrompt(tag, button) {
     const textarea = getPromptTextarea('txt2img', false);
     if (!textarea) return;
-    this.saveSnapshot();
     const tagEscaped = tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const regex = new RegExp(`(?:^|,\\s*)${tagEscaped}(?=,|$)`);
     if (regex.test(textarea.value)) {
@@ -258,7 +258,7 @@ class EasyPromptSelector {
     return button;
   }
 
-  // updateTagHighlighting: 根據輸入內容來更新 tag 按鈕高亮
+  // updateTagHighlighting: 根據輸入內容來更新所有 tag 按鈕的高亮
   updateTagHighlighting() {
     const posVal = getPromptTextarea('txt2img', false)?.value || '';
     const negVal = getPromptTextarea('txt2img', true)?.value || '';
@@ -393,7 +393,7 @@ class EasyPromptSelector {
       const field = redo.field;
       const textarea = getPromptTextarea('txt2img', field === 'neg');
       if (!textarea) return;
-      // 直接覆蓋式貼上，恢復快照內容
+      // 直接覆蓋式貼上
       let newVal = this.lastPromptSnapshot[field];
       textarea.value = newVal;
       textarea.dispatchEvent(new Event('input'));
@@ -443,7 +443,7 @@ class EasyPromptSelector {
 
   // handleSavePaste:
   // 當按鈕為 "save all" 時，記錄目前快照並切換狀態；
-  // 當按鈕為 "paste all" 時，不論目前有無內容，都直接覆蓋正、負輸入框為快照內容，
+  // 當按鈕為 "paste all" 時，不論目前有無內容，都直接清空正、負輸入框，覆蓋為快照內容，
   // 並記錄此操作（type: 'paste'）以供 Undo/Redo，同時更新所有 tag 高亮狀態，
   // 覆蓋前會記錄目前內容作 Undo 用。
   handleSavePaste(btn) {
@@ -454,7 +454,7 @@ class EasyPromptSelector {
       btn.textContent = 'paste all';
       btn.style.backgroundColor = '#4caf50';
     } else {
-      // Paste 操作：直接覆蓋正、負輸入框內容為快照內容
+      // Paste 操作：先清空現有內容，再覆蓋為快照內容
       const posBox = getPromptTextarea('txt2img', false);
       const negBox = getPromptTextarea('txt2img', true);
       if (posBox) {
@@ -469,7 +469,7 @@ class EasyPromptSelector {
         negBox.dispatchEvent(new Event('input'));
         this.history.push({ type: 'paste', field: 'neg', pasted: this.lastPromptSnapshot.neg, previous: prevNeg });
       }
-      // 更新 tag 高亮，將不在快照內的清除
+      // 在 paste 操作中，因為我們直接覆蓋，所有 tag 都應以快照內容為準
       this.updateTagHighlighting();
       btn.textContent = 'save all';
       btn.style.backgroundColor = '#f44336';
