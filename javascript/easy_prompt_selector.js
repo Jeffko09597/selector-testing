@@ -49,7 +49,7 @@ class EPSElementBuilder {
     label.style.padding = '2px 10px'
     label.style.marginRight = '6px'
     label.style.fontWeight = 'bold'
-    label.addEventListener('click', onClick)
+    label.addEventListener('click', () => onClick(label))
 
     const toggle = document.createElement('span')
     toggle.textContent = '⯆'
@@ -151,53 +151,37 @@ class EasyPromptSelector {
     this.lastPromptSnapshot = { pos, neg }
   }
 
-  insertTagPrompt(value) {
-    const isNeg = value.startsWith('neg-')
-    const val = isNeg ? value.slice(4) : value
-    const textarea = getPromptTextarea('txt2img', isNeg)
+  insertRandomPrompt(tag, button) {
+    const textarea = getPromptTextarea('txt2img', false)
     if (!textarea) return
-
-    const tags = val.split(',').map(t => t.trim()).filter(Boolean)
-    const current = textarea.value
-    const allIncluded = tags.every(t => current.includes(t))
+  
     this.saveSnapshot()
-
-    if (allIncluded) {
-      tags.forEach(t => {
-        textarea.value = textarea.value.replace(new RegExp(`(?:^|,\\s*)${t}`), '')
-      })
+  
+    const tagEscaped = tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const regex = new RegExp(`(?:^|,\\s*)${tagEscaped}(?=,|$)`)
+  
+    if (regex.test(textarea.value)) {
+      // 已存在 → 移除
+      textarea.value = textarea.value
+        .replace(regex, '')
+        .replace(/(^\s*,)|(,\s*,)|(,\s*$)/g, '') // 清理逗號
+        .trim()
+      button.classList.remove('eps-selected') // 取消高亮
     } else {
+      // 不存在 → 插入
       if (textarea.value.trim() !== '' && !textarea.value.trim().endsWith(',')) {
         textarea.value += ', '
       }
-      textarea.value += tags.join(', ')
-    }
-
-    this.history.push({ type: isNeg ? 'neg' : 'pos', value: val })
-    this.redoStack = []
-    textarea.dispatchEvent(new Event('input'))
-  }
-
-  insertRandomPrompt(tag) {
-    const textarea = getPromptTextarea('txt2img', false)
-    if (!textarea) return
-
-    const current = textarea.value
-    const tagEscaped = tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-    const regex = new RegExp(`(?:^|,\\s*)${tagEscaped}(?=,|$)`)
-    this.saveSnapshot()
-
-    if (regex.test(current)) {
-      textarea.value = current.replace(regex, '').replace(/^,\\s*|,\\s*$/, '')
-    } else {
-      if (current.trim() !== '' && !current.trim().endsWith(',')) {
-        textarea.value += ', '
-      }
       textarea.value += tag
+      button.classList.add('eps-selected') // 加上高亮
     }
-
+  
+    this.history.push({ type: 'pos', value: tag })
+    this.redoStack = []
+  
     textarea.dispatchEvent(new Event('input'))
   }
+
   renderTagButtons(tags, prefix = '') {
     if (Array.isArray(tags)) {
       return tags.map((tag) => this.renderTagButton(tag.replace(/^neg-/, ''), tag))
@@ -225,7 +209,7 @@ class EasyPromptSelector {
 
       const toggleRow = EPSElementBuilder.groupLabel(
         key,
-        () => this.insertRandomPrompt(`@${tagKey}@`),
+        (labelButton) => this.insertRandomPrompt(`@${tagKey}@`, labelButton),     
         (toggle) => {
           const visible = groupBody.style.display !== 'none'
           groupBody.style.display = visible ? 'none' : 'flex'
@@ -417,6 +401,16 @@ class EasyPromptSelector {
 }
 
 onUiLoaded(async () => {
+
+  const style = document.createElement('style')
+style.innerHTML = `
+  .eps-selected {
+    background-color: #336699 !important;
+    border-color: #5588cc !important;
+    color: #fff !important;
+  }
+`
+document.head.appendChild(style)
   const yaml = window.jsyaml
   const eps = new EasyPromptSelector(yaml, gradioApp())
 
@@ -442,16 +436,6 @@ onUiLoaded(async () => {
 
   gradioApp().getElementById('txt2img_actions_column').appendChild(controls)
 
-// 🔄 等待 WebUI 初始化後綁定 generate 按鈕
-const observer = new MutationObserver(() => {
-  const generateBtn = gradioApp().getElementById('txt2img_generate')
-  if (generateBtn) {
-    generateBtn.addEventListener('mousedown', () => {
-      eps.saveSnapshot()
-    }, { once: false }) // 每次點都監聽
-    observer.disconnect()
-  }
-})
 
 observer.observe(document, { childList: true, subtree: true })
 
