@@ -108,7 +108,7 @@ class EasyPromptSelector {
     this.tags = {};
     this.history = [];
     this.redoStack = [];
-    // lastPromptSnapshot 只更新於 save all 按鈕點擊時
+    // lastPromptSnapshot 僅在使用者點擊「save all」時更新
     this.lastPromptSnapshot = { pos: '', neg: '' };
     this.PATH_FILE = 'tmp/easyPromptSelector.txt';
     this.AREA_ID = 'easy-prompt-selector';
@@ -148,14 +148,14 @@ class EasyPromptSelector {
     node.style.display = visible ? 'block' : 'none';
   }
 
-  // saveSnapshot: 只在使用者點擊「save all」時呼叫
+  // saveSnapshot 只在使用者點擊「save all」時呼叫
   saveSnapshot() {
     const pos = getPromptTextarea('txt2img', false)?.value || '';
     const neg = getPromptTextarea('txt2img', true)?.value || '';
     this.lastPromptSnapshot = { pos, neg };
   }
 
-  // insertTagPrompt: tag操作本身不更新 lastPromptSnapshot
+  // insertTagPrompt: 操作時不自動更新快照，由使用者點擊 save all 決定快照更新
   insertTagPrompt(value, button) {
     const isNeg = value.startsWith('neg-');
     const tagEscaped = value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -175,13 +175,13 @@ class EasyPromptSelector {
       textarea.value += value;
       if (button) button.classList.add('eps-selected');
     }
-    // 不呼叫 saveSnapshot() 自動更新快照
+    // 不自動更新快照
     this.history.push({ type: isNeg ? 'neg' : 'pos', value: value, button: button });
     this.redoStack = [];
     textarea.dispatchEvent(new Event('input'));
   }
 
-  // insertRandomPrompt: 用於分類標籤，不自動更新 lastPromptSnapshot
+  // insertRandomPrompt: 用於分類標籤，與 insertTagPrompt 邏輯相同，不自動更新快照
   insertRandomPrompt(tag, button) {
     const textarea = getPromptTextarea('txt2img', false);
     if (!textarea) return;
@@ -222,13 +222,17 @@ class EasyPromptSelector {
       const wrapper = EPSElementBuilder.groupWrapper();
       const groupBody = document.createElement('div');
       groupBody.classList.add('eps-group-body');
+      // 使用 Flex 排版
       groupBody.style.display = 'flex';
       groupBody.style.flexWrap = 'wrap';
+      groupBody.style.justifyContent = 'flex-start';
+      groupBody.style.alignItems = 'flex-start';
       groupBody.style.gap = '6px';
       const toggleRow = EPSElementBuilder.groupLabel(
         key,
         (labelButton) => this.insertRandomPrompt(`@${tagKey}@`, labelButton),
         (toggle) => {
+          // 此處不作自動收起處理，只切換最後層
           const visible = groupBody.style.display !== 'none';
           groupBody.style.display = visible ? 'none' : 'flex';
           toggle.textContent = visible ? '⯈' : '⯆';
@@ -258,7 +262,7 @@ class EasyPromptSelector {
     return button;
   }
 
-  // updateTagHighlighting: 根據輸入內容來更新所有 tag 按鈕的高亮
+  // updateTagHighlighting: 根據目前輸入更新所有 tag 按鈕的高亮
   updateTagHighlighting() {
     const posVal = getPromptTextarea('txt2img', false)?.value || '';
     const negVal = getPromptTextarea('txt2img', true)?.value || '';
@@ -299,7 +303,8 @@ class EasyPromptSelector {
     controlRow.appendChild(EPSElementBuilder.baseButton('↩ Undo', { size: 'lg', color: 'secondary', onClick: () => this.undoLastTag() }));
     controlRow.appendChild(EPSElementBuilder.baseButton('↪ Redo', { size: 'lg', color: 'secondary', onClick: () => this.redoLastTag() }));
     controlRow.appendChild(EPSElementBuilder.baseButton('⯆ 展開全部', { size: 'lg', color: 'secondary', onClick: () => this.expandAllInCurrentSection() }));
-    controlRow.appendChild(EPSElementBuilder.baseButton('⯈ 收起全部', { size: 'lg', color: 'secondary', onClick: () => this.collapseAllInCurrentSection() }));
+    // 修改這裡的 expand/collapse：只收起最下層的部分
+    controlRow.appendChild(EPSElementBuilder.baseButton('⯈ 收起全部', { size: 'lg', color: 'secondary', onClick: () => this.collapseOnlyLeafSections() }));
     controlRow.appendChild(EPSElementBuilder.baseButton('🧹 Clear Prompt', { size: 'lg', color: 'secondary', onClick: () => this.clearPrompt() }));
     const contentWrap = document.createElement('div');
     contentWrap.id = this.CONTENT_ID;
@@ -339,11 +344,15 @@ class EasyPromptSelector {
     });
   }
 
-  collapseAllInCurrentSection() {
+  // 修改後的 collapseOnlyLeafSections: 僅收起沒有子 group 的最下層 eps-group-body
+  collapseOnlyLeafSections() {
     const selected = document.getElementById(this.SELECT_ID)?.value;
     const section = gradioApp().getElementById(`easy-prompt-selector-container-${selected}`);
     if (!section) return;
-    section.querySelectorAll('.eps-group-body').forEach(body => {
+    // 找出沒有 nested .eps-group-body 的 groupBody，即為葉節點
+    const leafBodies = Array.from(section.querySelectorAll('.eps-group-body'))
+      .filter(body => !body.querySelector('.eps-group-body'));
+    leafBodies.forEach(body => {
       body.style.display = 'none';
       const toggle = body.previousSibling?.querySelector('span');
       if (toggle) toggle.textContent = '⯈';
@@ -393,7 +402,6 @@ class EasyPromptSelector {
       const field = redo.field;
       const textarea = getPromptTextarea('txt2img', field === 'neg');
       if (!textarea) return;
-      // 直接覆蓋式貼上
       let newVal = this.lastPromptSnapshot[field];
       textarea.value = newVal;
       textarea.dispatchEvent(new Event('input'));
@@ -443,8 +451,8 @@ class EasyPromptSelector {
 
   // handleSavePaste:
   // 當按鈕為 "save all" 時，記錄目前快照並切換狀態；
-  // 當按鈕為 "paste all" 時，不論目前有無內容，都直接清空正、負輸入框，覆蓋為快照內容，
-  // 並記錄此操作（type: 'paste'）以供 Undo/Redo，同時更新所有 tag 高亮狀態，
+  // 當按鈕為 "paste all" 時，直接清空正、負輸入框，再覆蓋為快照內容，
+  // 並記錄此操作 (type: 'paste') 以供 Undo/Redo，同時更新所有 tag 高亮狀態，
   // 覆蓋前會記錄目前內容作 Undo 用。
   handleSavePaste(btn) {
     if (btn.textContent.toLowerCase() === 'save all') {
@@ -454,7 +462,7 @@ class EasyPromptSelector {
       btn.textContent = 'paste all';
       btn.style.backgroundColor = '#4caf50';
     } else {
-      // Paste 操作：先清空現有內容，再覆蓋為快照內容
+      // Paste 操作：先清空內容，再完全覆蓋為快照內容
       const posBox = getPromptTextarea('txt2img', false);
       const negBox = getPromptTextarea('txt2img', true);
       if (posBox) {
@@ -469,7 +477,7 @@ class EasyPromptSelector {
         negBox.dispatchEvent(new Event('input'));
         this.history.push({ type: 'paste', field: 'neg', pasted: this.lastPromptSnapshot.neg, previous: prevNeg });
       }
-      // 在 paste 操作中，因為我們直接覆蓋，所有 tag 都應以快照內容為準
+      // 更新 tag 高亮依據新內容
       this.updateTagHighlighting();
       btn.textContent = 'save all';
       btn.style.backgroundColor = '#f44336';
